@@ -432,7 +432,7 @@ defmodule ExAws.Dynamo do
   @spec batch_write_item(%{table_name => [write_item]}) :: ExAws.Operation.JSON.t
   @spec batch_write_item(%{table_name => [write_item]}, opts :: batch_write_item_opts) :: ExAws.Operation.JSON.t
   def batch_write_item(data, opts \\ []) do
-    request_items = data
+    data
     |> Enum.reduce(%{}, fn {table_name, table_queries}, query ->
       queries = table_queries
       |> Enum.map(fn
@@ -443,20 +443,18 @@ defmodule ExAws.Dynamo do
       end)
       Map.put(query, table_name, queries)
     end)
+    |> batch_write_item_and_retry(opts)
+  end
 
+  defp batch_write_item_and_retry(request_items, opts) do
     data = opts
     |> camelize_keys
     |> Map.merge(%{"RequestItems" => request_items})
-
     case request(:batch_write_item, data) do
-      {:ok, %{"UnprocessedItems" => %{}} = response} ->
-        {:ok, response}
+      {:ok, %{"UnprocessedItems" => unprocessed_items}} when map_size(unprocessed_items) == 0 ->
+        {:ok, %{}}
       {:ok, %{"UnprocessedItems" => unprocessed_items}} ->
-        unprocessed_data =
-          opts
-          |> camelize_keys
-          |> Map.merge(%{"RequestItems" => unprocessed_items})
-        batch_write_item(:batch_write_item, unprocessed_data)
+        batch_write_item_and_retry(unprocessed_items, opts)
       response ->
         response
     end
