@@ -448,7 +448,18 @@ defmodule ExAws.Dynamo do
     |> camelize_keys
     |> Map.merge(%{"RequestItems" => request_items})
 
-    request(:batch_write_item, data)
+    case request(:batch_write_item, data) do
+      {:ok, %{"UnprocessedItems" => %{}} = response} ->
+        {:ok, response}
+      {:ok, %{"UnprocessedItems" => unprocessed_items}} ->
+        unprocessed_data =
+          opts
+          |> camelize_keys
+          |> Map.merge(%{"RequestItems" => unprocessed_items})
+        batch_write_item(:batch_write_item, unprocessed_data)
+      response ->
+        response
+    end
   end
 
   @doc "Get item from table"
